@@ -1,0 +1,274 @@
+
+// Options for JavaCC.
+options { LOOKAHEAD=1; FORCE_LA_CHECK=true; }
+
+// Fonction principale
+PARSER_BEGIN(Tigger)
+
+import java.util.ArrayList;
+import ast.*;
+import visitor.*;
+import myUtils.*;
+
+public class Tigger
+{
+    public static void main(String args[]) throws ParseException
+    {
+    	Tigger parser = new Tigger(System.in);
+    	try{
+		    parser.mainloop();
+    	}catch(ParseException e) {System.out.println(e.getMessage());}
+    }
+}
+PARSER_END(Tigger)
+
+// Characters to ignore.
+SKIP: { " " | "\r" | "\t" }
+
+// Token specifications.
+TOKEN:
+{
+    < NUMBER: (<DIGIT>)+ ("." (<DIGIT>)*)? >  		// A decimal number.
+|   < DIGIT: ["0"-"9"] >                      		// A decimal digit.
+|	< EOL: "\n" >	                          		// End of line.
+}
+
+// Token reserved words
+TOKEN:
+{
+		< PRINT: "print" >		// print statement
+|		< IF: "if" >	 		// if statement
+|		< THEN: "then" >
+|		< ELSE: "else" >		// else statement
+|		< VAR: "var" >			// variable
+|		< LET: "let" >			// block's variables
+|		< IN: "in" >			// start scope
+|		< END: "end" >			// end scope
+|		< WHILE: "while" >		// while loop
+|		< DO: "do" >
+|		< FOR:  "for" >			// for loop
+|		< TO: "to" >
+|		< STRING: "string" >	// string variables
+|		< INT: "int" >
+|		< BOOL: "bool" >
+|		< QUIT: "quit" >		// quit program
+}
+
+// Token identifier
+TOKEN:
+{
+	
+	< IDENTIFIER: (<LETTER>) + (<LETTER>|<DIGIT>)* >	// An identifier
+|	< TEXT: <QUOTE>(["_", " ", "a"-"z", "A"- "Z", "0"-"9", ":", "."])*<QUOTE> >
+|	< #LETTER: ["_", "a"-"z", "A"- "Z"] >			// A letter
+}
+
+// Token symbols
+TOKEN:
+{
+		< PLUS: "+" >			// plus symbol
+|		< MINUS: "-" >			// minus symbol
+|		< STAR: "*" >			// star symbol
+|		< SLASH: "/" >			// slash symbol
+|		< OPAREN: "(" >			// opening parenthesis
+|		< CPAREN: ")" >			// closing parenthesis
+|		< OBRACK: "{" > 		// opening bracket
+|		< CBRACK: "}" > 		// closing bracket
+|		< EQ: "=" >			// equality symbol
+|		< NEQ: "<>" >			// inequality symbol
+|		< GT: ">" >				// greater than symbol
+|		< GEQ: ">=" >			// greater than or equal to symbol
+|		< LT: "<" >				// less than symbol
+|		< LEQ: "<=" >			// less than or equal to symbol
+|		< AFFECTATION: ":=" >	// affectation symbol
+|		< SEP: "," >			// separator symbol
+|		< QUOTE: "\"" >			// quote symbol
+}
+
+// Main lopp: read expressions on a line until end of file.
+//     mainloop → (expression <EOL>)* <EOF>
+// each expression or statement will print the corresponding AST
+// and evaluate it
+void mainloop():
+{ Exp a; Stmt s; Token t;}
+{
+	(
+	  a=expression() <EOL> { 
+	  		a.accept(new PrettyPrinter()); 
+	  		a.accept(new Eval()); 
+	  		System.out.println();}
+      | s=statement() <EOL> {
+      		 s.accept(new PrettyPrinter()); 
+      		 System.out.print("=> ");
+      		  s.accept(new Eval()); 
+      		 System.out.println(); }
+	)*
+    <EOF>
+}
+
+Stmt statement():
+{ Stmt s=null; Token t; }
+{
+	(	
+		s=block()
+	|	s=print() 
+	|	s=ifStmt()
+	|	s=whileStmt()
+	|	s=doWhileStmt()
+	|	s=forStmt()
+	| t=<QUIT> { System.exit(0); }
+	)
+	{ return s; }
+}
+
+// The print statement serves to print any expression
+Stmt print():
+{ Stmt a; Exp b; Token t;}
+{
+	<PRINT> <OPAREN> b=expression() { a = new Print(b);} <CPAREN> { return a; }
+}
+
+// In a block one can define variables that belong to the block's
+// scope and then use them in a set of statements that follow
+// Both the expressions and statements are stored in 2 different 
+// classes where each will be stored in a list
+Block block():
+{ Exp e; Stmt s; Block b; VarBlock vB = new VarBlock(); StmtBlock sB = new StmtBlock(); }
+{
+	<LET> [<EOL>]
+	(e = expression()[<EOL>] {vB.addVar(e); })*
+	<IN> [<EOL>]
+	(s = statement() [<EOL>]{ sB.addStmt(s); })* <END>
+	{ return new Block(vB, sB); }
+}
+
+// The if statement test if an expression is true, if so then the
+// first statement is considered. The next optional part takes another
+// statement that is only considered if the expression in false. This 
+// optional statement can be another if statement
+Stmt ifStmt():
+{ Exp ifE, elseE; Stmt ifS, elseS, s; }
+{
+	<IF> ifE=expression()
+	<THEN> ifS=statement() { s = new IfStmt(ifE, ifS); }
+	[LOOKAHEAD(1) <ELSE>
+		elseS=statement() { s = new IfStmt(ifE, ifS, elseS); }
+	]
+	 { return s; }
+}
+
+// A while loop will rceive an expression which if continues to be
+// true, the statement and expression in parenthesis are evaluated.
+// The expression in parenthesis can be anything but to avoid an 
+// infinite loop it is recomended that it is an increment or decrement
+// expression that will eventually lead to exiting the loop.
+Stmt whileStmt():
+{ Exp e, i; Stmt s; }
+{
+	<WHILE> e=expression() <DO> [<EOL>]
+	<OPAREN> s=statement() <SEP> i=expression()
+	<CPAREN>
+	{ return new WhileStmt(e, s, i); }
+}
+
+// Just like the while loop, with the difference that it will
+// evaluate the statement and expression in parenthesis at least
+// one time.
+Stmt doWhileStmt():
+{ Exp e, i; Stmt s; }
+{
+	<DO> [<EOL>]
+	<OPAREN> s=statement() <SEP> i=expression()
+	<CPAREN> [<EOL>]
+	<WHILE> e=expression()
+	{ return new DoWhileStmt(e, s, i); }
+}
+
+// The for loop will evaluate an expression and the statement
+// until the first expression reaches the value of the second one
+Stmt forStmt():
+{ Exp c, e; Stmt s; Token i; }
+{
+	<FOR> c=expression() <TO> e=expression()
+	<DO> s=statement()
+	{ return new ForStmt(c, e, s); }
+}
+
+// Expression (the axiom).
+// E -> ( type ID:=Eq | ID:=Eq | Eq )
+// Eq -> C ( =C | <>C )
+// C -> A ( <A | <=A | >A | >=A)
+// A -> T ( +T | -T )
+// T -> F ( *F | /F )
+// F -> [-] <NUM> | (E) | ID | TEXT
+Exp expression():
+{ Exp a,b; Token i, t;}
+{
+	(
+		<VAR> i=<IDENTIFIER> <AFFECTATION> b=equality() {a = new Aff(i.toString(), b, true);}
+	|	<STRING> i=<IDENTIFIER> <AFFECTATION> b=equality() {a = new Aff(i.toString(), b, true);}
+	|	LOOKAHEAD(2) i=<IDENTIFIER> <AFFECTATION> b=equality() {a = new Aff(i.toString(), b, false);}
+	|	a=equality()
+	) {return a;}
+}
+
+Exp equality():
+{ Exp a,b; }
+{
+	a=comparison()
+	(
+		<EQ> b=comparison() { a = new Eq(a, b); }
+	|	<NEQ> b=comparison() { a = new Neq(a, b); }
+	)* { return a; }
+}
+
+Exp comparison():
+{ Exp a,b; }
+{
+	a=additive()
+	(
+		<GT> b=additive() { a = new GreaterThan(a, b); }
+	|	<GEQ> b=additive() { a = new GreaterEq(a, b); }
+	|	<LT> b=additive() { a = new LessThan(a, b); }
+	|	<LEQ> b=additive() { a = new LessEq(a, b); }
+	)* { return a; }
+}
+
+Exp additive():
+{ Exp a,b; }
+{
+    a=term()
+    (
+      <PLUS> b=term() { a = new Add(a, b); }
+    | <MINUS> b=term() { a = new Sub(a, b); }
+    )* { return a; }
+}
+
+Exp term():
+{ Exp a,b; }  
+{
+	a=factor()
+	(
+		<STAR> b=factor() { a = new Mul(a, b); }
+    | <SLASH> b=factor() { a = new Div(a, b); }
+    )* { return a;}
+}
+
+// Factor of a term.
+Exp factor():
+{ Token t; Exp a=null;}
+{
+	(
+		<MINUS> t=<NUMBER> { a = new Num(-Integer.parseInt(t.toString())); }
+	| t=<NUMBER> { a = new Num(Integer.parseInt(t.toString())); }
+    | <OPAREN> a=expression() <CPAREN> 
+	| t=<IDENTIFIER> {
+    	SymTable sm = SymTable.getHM();
+    	Object o = sm.getValueType(t.toString(), false); 
+    	if(o instanceof Var) a = (Var)o;
+    	else if(o instanceof MyString) a = (MyString)o;
+    	else a = new Var(t.toString());
+      }
+    | t=<TEXT> {a = new MyString(t.toString());}
+    ) { return a; }
+}

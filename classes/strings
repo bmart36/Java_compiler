@@ -1,0 +1,11 @@
+string a:="test"
+"Value of string a: "+a
+"Concatenating a and with a string: " + a + "ing..."
+string b:="ing"
+"Concatenating string a and string b: " + a + b
+"Concatenating string a and with an integer: " + a + " " + 2
+var c:=6
+print("Concatenating string a with var c: " + a  + " " + c)
+print("Concatenating string a with var c and integer with priorities: " + a  + " " + (c+5))
+print(a<>b)
+print(a>=b)

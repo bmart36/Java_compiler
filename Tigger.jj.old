@@ -1,0 +1,177 @@
+
+// Options for JavaCC.
+options { LOOKAHEAD=1; FORCE_LA_CHECK=true; }
+
+// Fonction principale
+PARSER_BEGIN(Tigger)
+
+import ast.*;
+import visitor.*;
+import myUtils.*;
+
+public class Tigger
+{
+    public static void main(String args[]) throws ParseException
+    {
+        Tigger parser = new Tigger(System.in);
+        parser.mainloop();
+    }
+}
+PARSER_END(Tigger)
+
+// Characters to ignore.
+SKIP: { " " | "\r" | "\t" }
+
+// Token specifications.
+TOKEN:
+{
+    < NUMBER: (<DIGIT>)+ ("." (<DIGIT>)*)? >  // A decimal number.
+|   < DIGIT: ["0"-"9"] >                      // A decimal digit.
+|	< CHAR: ["a"-"z", "A"- "Z"]>			  // A character
+|	< IDENTIFIER: ("_"<CHAR>)+(<DIGIT>|<CHAR>)? >	  // An identifier
+|   < EOL: "\n" >                             // End of line.
+}
+
+// Token symbols
+TOKEN:
+{
+		< PLUS: "+" >		// plus symbol
+|		< MINUS: "-" >	// minus symbol
+|		< STAR: "*" >		// star symbol
+|		< SLASH: "/" >	// slash symbol
+|		< OPAREN: "(" >	// opening parenthesis
+|		< CPAREN: ")" >	// closing parenthesis
+|		< EQ: "=" >			// equality symbol
+|		< NEQ: "<>" >		// inequality symbol
+|		< GT: ">" >		// greater than symbol
+|		< GEQ: ">=" >		// greater than or equal to symbol
+|		< LT: "<" >		// less than symbol
+|		< LEQ: "<=" >		// less than or equal to symbol
+|		< AFFECTATION: ":=" >		// affectation symbol
+}
+
+// Token reserved words
+TOKEN:
+{
+		< PRINT: "print" >			// print statement
+|		< IF: "if" >	 			// if statement
+|		< THEN: "then" >			// then statement
+|		< ELSE: "else" >			// else statement
+|		< VAR: "var">				// A variable
+|		< INT: "int" >
+|		< BOOL: "bool" >
+|		< QUIT: "quit" >			// quit program
+}
+
+// Main lopp: read expressions on a line until end of file.
+//     mainloop → (expression <EOL>)* <EOF>
+void mainloop():
+{ Exp a; Stmt s; Token t;}
+{
+    (
+      a=expression() <EOL> { a.accept(new Eval()); }
+      | s=statement() <EOL> { s.accept(new Eval()); }
+    )*
+    <EOF>
+}
+
+Stmt statement():
+{ Stmt s=null; Token t; }
+{
+	(	
+		s=ifStmt()
+	|	s=print() 
+	| t=<QUIT> { System.exit(0); }
+	)
+	{ return s; }
+}
+
+Stmt print():
+{ Stmt a; Exp b; Token t;}
+{
+	<PRINT> <OPAREN> 
+	(
+		LOOKAHEAD(2)
+		b=expression() { a = new Print(b);}
+	|	t=<IDENTIFIER> {a = new Print(null, t.toString());}
+	) <CPAREN> { return a; }
+}
+
+Stmt ifStmt():
+{ Exp ifE, elseE; Stmt ifS, elseS, s; }
+{
+	<IF> ifE=expression() <THEN> ifS=statement() { s = new IfStmt(ifE, ifS); }
+	[LOOKAHEAD(1) <ELSE>
+		elseS=statement() { s = new IfStmt(ifE, ifS, elseS); }
+	]
+	 { return s; }
+}
+
+// Expression (the axiom).
+// E -> C ( =C | <>C )
+// C -> A ( <A | <=A | >A | >=A)
+// A -> T ( +T | -T )
+// T -> F ( *F | /F )
+// F -> [-] <NUM> | (E)
+Exp expression():
+{ Exp a,b; Token i;}
+{
+	(
+		<VAR> i= <IDENTIFIER> <AFFECTATION> b=expression() {a = new Aff(i.toString(), b);}
+	|	a=equality()
+	) {return a;}
+}
+
+Exp equality():
+{ Exp a,b; }
+{
+	a=comparison()
+	(
+		<EQ> b=comparison() { a = new Eq(a, b); }
+	|	<NEQ> b=comparison() { a = new Neq(a, b); }
+	)* { return a; }
+}
+
+Exp comparison():
+{ Exp a,b; }
+{
+	a=additive()
+	(
+		<GT> b=additive() { a = new GreaterThan(a, b); }
+	|	<GEQ> b=additive() { a = new GreaterEq(a, b); }
+	|	<LT> b=additive() { a = new LessThan(a, b); }
+	|	<LEQ> b=additive() { a = new LessEq(a, b); }
+	)* { return a; }
+}
+
+Exp additive():
+{ Exp a,b; }
+{
+    a=term()
+    (
+      <PLUS> b=term() { a = new Add(a, b); }
+    | <MINUS> b=term() { a = new Sub(a, b); }
+    )* { return a; }
+}
+
+Exp term():
+{ Exp a,b; }  
+{
+	a=factor()
+	(
+		<STAR> b=factor() { a = new Mul(a, b); }
+    | <SLASH> b=factor() { a = new Div(a, b); }
+    )* { return a;}
+}
+
+// Factor of a term.
+Exp factor():
+{ Token t; Exp a;}
+{
+	(
+		<MINUS> t=<NUMBER> { a = new Num(-Integer.parseInt(t.toString())); }
+	| t=<NUMBER> { a = new Num(Integer.parseInt(t.toString())); }
+    | <OPAREN> a=expression() <CPAREN> 
+    //| t=<IDENTIFIER> {a = SymTable.getHM().getValueType(t.toString());}
+    ) { return a; }
+}

@@ -1,0 +1,37 @@
+Integers
+- operations(+,-,*,/)
+- Comparisons (=,<>,<=,<,>=,>)s
+- parenthesis
+
+
+Scopes/variables
+ -----------positive tests--------------
+- let
+	var foo := 1
+	var bar := 1 + foo
+	var baz := bar * baz
+  in
+  	foo, bar * baz
+  end
+- let in 1 + 1 end
+- let var i := 1 in print(i) end
+- let var i := 10
+  in
+  	print(i)
+  	let var i := i*i
+  	in
+  		print(i)
+  	end,
+  	print(i)
+  end
+ -----------negative tests--------------
+- let var foo in end
+- let var foo := 1
+ 	  var bar := 1
+ 	  var foo := 1
+   in 1 end
+
+Affectation
+- i := 42
+- i := i + 1
+
